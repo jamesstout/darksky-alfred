@@ -14,17 +14,27 @@ function get_data($url) {
 }
 
 // Get api key and theme from settings file
-$key = $w->get( 'api.key', 'settings.plist' );
-$theme = $w->get('theme', 'settings.plist');
-$unit_code = $w->get( 'units', 'settings.plist' );
-$location = $w->get('location', 'settings.plist');
+$s = 'settings.plist';
+$key = $w->get( 'api.key', $s);
+$theme = $w->get( 'theme', $s);
+$unit_code = $w->get( 'units', $s);
+$location = $w->get( 'location', $s);
+$ipstack_api_key = $w->get( 'ipstack_api_key', $s );
 
 // Check api key, die if malformed or missing
 if (preg_match('/[0-9a-f]{32}/',$key) != 1) {
-	$error = "Missing or incorrect API key.";
+	$error = "Missing or incorrect Dark Sky API key.";
 	$w->result( 'error', 'error', 'There was an error with your API key.', 'Set API key by typing "w k " and following instructions', 'icon.png', 'no');
 	echo $w->toxml();
-	die ($error . print_r($l, 1));	
+	die ($error . print_r($key, 1));	
+}
+
+// Check ipstack_api_key, die if malformed or missing
+if (preg_match('/[0-9a-f]{32}/',$ipstack_api_key) != 1) {
+	$error = "Missing or incorrect ipstack API key.";
+	$w->result( 'error', 'error', 'There was an error with your API key.', 'Set API key by typing "w i " and following instructions', 'icon.png', 'no');
+	echo $w->toxml();
+	die ($error . print_r($ipstack_api_key, 1));	
 }
 
 // Set path to theme icons
@@ -32,8 +42,20 @@ $icon_path = 'icons/'.$theme.'/';
 
 if (!$location) {
 	// Get location data from IP address
-	$ip = get_data('http://ipecho.net/plain');
-	$r  = get_data('http://freegeoip.net/json/'.$ip);
+    $ip = get_data('https://ipecho.net/plain');
+    
+    if(!filter_var($ip, FILTER_VALIDATE_IP)){
+        $ip = system('dig +short myip.opendns.com @resolver1.opendns.com', $retval);
+        
+        if($retval != 0 || !filter_var($ip, FILTER_VALIDATE_IP)){
+            $w->result( 'error', 'error', 'There was an error checking your weather.', 'Unable to determine location', 'icon.png', 'no');
+            echo $w->toxml();
+            die ($error);  
+        }
+    }
+
+    $r  = get_data('http://api.ipstack.com/'.$ip.'?access_key='.$ipstack_api_key);
+    
 	$l = json_decode($r);
 } else {
     $loc = explode(',', $location, 2);
@@ -49,7 +71,7 @@ if (!is_object($l)) {
 	die ($error . print_r($l, 1));
 }
 
-if ($unit_code == 'us' || $unit_code == 'uk' || $unit_code == 'si') {
+if ($unit_code == 'us' || $unit_code == 'uk' || $unit_code == 'si' || $unit_code == 'auto' ) {
 	$units = $unit_code;
 } else {
 	// Set units based on country code from freegeoip if set to default
@@ -57,10 +79,11 @@ if ($unit_code == 'us' || $unit_code == 'uk' || $unit_code == 'si') {
 }
 
 // Call API URL
-$url = "https://api.forecast.io/forecast/{$key}/{$l->latitude},{$l->longitude}?units={$units}";
+$url = "https://api.darksky.net/forecast/{$key}/{$l->latitude},{$l->longitude}?units={$units}";
+
 $r = get_data($url);
 $wx = json_decode($r);
-$web_url = "http://forecast.io/#/f/{$l->latitude},{$l->longitude}";
+$web_url = "https://darksky.net/forecast/{$l->latitude},{$l->longitude}";
 
 // Error Handling from API
 if (!is_object($wx)) {
